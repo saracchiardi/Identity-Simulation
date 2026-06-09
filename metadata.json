@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Identity Simulation",
-  "description": "Interactive workspace, task planning board, and Character Forge sandbox for advanced worldbuilders and writers.",
+  "name": "Remix: Remix: Identity Simulation",
+  "description": "Interactive ERS Standard Navigator, Scrum Kanban Agile Board, PMI Change Control, and Character Forge Sandbox for worldbuilders.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
