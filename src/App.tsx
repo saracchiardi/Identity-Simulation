@@ -66,6 +66,49 @@ export default function App() {
   const [nameInput, setNameInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // User Profile configuration & creation state
+  const [registerRole, setRegisterRole] = useState<'administrador' | 'usuario comun'>('administrador');
+  const [registerAvatar, setRegisterAvatar] = useState<string>('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop');
+  const [registerBio, setRegisterBio] = useState<string>('Cronista del grimorio rúnico en busca de tejer mundos e identidades.');
+  
+  const [userProfile, setUserProfile] = useState<{
+    name: string;
+    email: string;
+    role: 'administrador' | 'usuario comun';
+    avatar: string;
+    bio: string;
+  }>(() => {
+    const saved = localStorage.getItem('user_profile_sim_data');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      name: 'Sacerdote de la Prosa',
+      email: 'forjador@grimorigital.io',
+      role: 'administrador',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=150&auto=format&fit=crop',
+      bio: 'Guardián supremo de las crónicas del multiverso literario.'
+    };
+  });
+
+  // Story creation validation states
+  const [storyTitleError, setStoryTitleError] = useState<string>('');
+  const [storyContentError, setStoryContentError] = useState<string>('');
+  
+  // Collapsible guides to reduce visual overload in admin area
+  const [showErsGuide, setShowErsGuide] = useState<boolean>(false);
+  const [showPmiGuide, setShowPmiGuide] = useState<boolean>(false);
+
+  // Administration view Sub-tabs structure
+  const [adminSubTab, setAdminSubTab] = useState<'requirements' | 'scrum' | 'pmi'>('requirements');
+
+  // Sync profile data to local storage
+  useEffect(() => {
+    localStorage.setItem('user_profile_sim_data', JSON.stringify(userProfile));
+  }, [userProfile]);
+
   // Core App State
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeCharTab, setActiveCharTab] = useState<'list' | 'create'>('list');
@@ -140,6 +183,13 @@ export default function App() {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Redirect non-administrators away from dashboard tab
+  useEffect(() => {
+    if (userProfile.role === 'usuario comun' && activeTab === 'dashboard') {
+      setActiveTab('stories');
+    }
+  }, [userProfile.role, activeTab]);
 
   // Filter States (Requirements matrix tab)
   const [reqSearch, setReqSearch] = useState<string>('');
@@ -277,7 +327,7 @@ export default function App() {
       const edLog: SystemLog = {
         id: `LOG-${Date.now()}`,
         time: 'Hace 1s',
-        type: 'Cambio ERS',
+        type: 'Creado Personaje',
         description: `Ficha de personaje modificada: ${charName} (${charRace} - ${charClass}).`,
         user: 'Sacerdote de la Prosa',
         ipOrDetail: `ID: ${editingCharacterId}`
@@ -329,8 +379,30 @@ export default function App() {
   // Handler: Save Story (Crónica)
   const handleSaveStory = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!storyTitle.trim() || !storyContent.trim()) {
-      triggerToast('Información Insuficiente', 'Por favor ingresa un título y contenido para tu crónica.', 'error');
+    
+    let isValid = true;
+    if (!storyTitle.trim()) {
+      setStoryTitleError('El título de la crónica es obligatorio para forjar el pergamino.');
+      isValid = false;
+    } else if (storyTitle.trim().length < 5) {
+      setStoryTitleError('El título de la crónica debe tener al menos 5 letras de longitud.');
+      isValid = false;
+    } else {
+      setStoryTitleError('');
+    }
+
+    if (!storyContent.trim()) {
+      setStoryContentError('El desarrollo narrativo es obligatorio para dar cuerpo al relato.');
+      isValid = false;
+    } else if (storyContent.trim().length < 20) {
+      setStoryContentError('El manuscrito es muy breve. Describe la crónica literaria con al menos 20 caracteres.');
+      isValid = false;
+    } else {
+      setStoryContentError('');
+    }
+
+    if (!isValid) {
+      triggerToast('Fallas de Validación', 'Corrige los errores señalados en rojo en tu crónica antes del sellado.', 'error');
       return;
     }
 
@@ -354,9 +426,9 @@ export default function App() {
       const editLog: SystemLog = {
         id: `LOG-${Date.now()}`,
         time: 'Hace 1s',
-        type: 'Cambio ERS',
+        type: 'Creada Historia',
         description: `Crónica literaria actualizada: "${storyTitle}".`,
-        user: 'Sacerdote de la Prosa',
+        user: userProfile.name,
         ipOrDetail: `ID: ${editingStoryId}`
       };
       setLogs(prev => [editLog, ...prev]);
@@ -380,7 +452,7 @@ export default function App() {
         time: 'Hace 1s',
         type: 'Creada Historia',
         description: `Nueva crónica fundadora: "${storyTitle}" integrada en el multiverso.`,
-        user: 'Sacerdote de la Prosa',
+        user: userProfile.name,
         ipOrDetail: `Estatus: ${storyStatus}`
       };
       setLogs(prev => [log, ...prev]);
@@ -388,12 +460,8 @@ export default function App() {
       triggerToast('Crónica Sellada', `¡Se ha guardado "${storyTitle}" en el compendio!`, 'gold');
     }
 
-    setStoryTitle('');
-    setStoryContent('');
-    setStoryCharacterId('');
-    setStoryWorldId('');
-    setStoryStatus('Publicada');
-    setEditingStoryId(null);
+    clearStoryForm();
+    setActiveStoryTab('list');
     setActiveTab('stories');
   };
 
@@ -404,6 +472,8 @@ export default function App() {
     setStoryWorldId('');
     setStoryStatus('Publicada');
     setEditingStoryId(null);
+    setStoryTitleError('');
+    setStoryContentError('');
   };
 
   // Handler: Save World (Cosmogonía)
@@ -435,7 +505,7 @@ export default function App() {
       const editLog: SystemLog = {
         id: `LOG-${Date.now()}`,
         time: 'Hace 1s',
-        type: 'Cambio ERS',
+        type: 'Creado Mundo',
         description: `Datos geográficos actualizados para plano: ${worldName}.`,
         user: 'Sacerdote de la Prosa',
         ipOrDetail: `ID: ${editingWorldId}`
@@ -498,7 +568,7 @@ export default function App() {
     const log: SystemLog = {
       id: `LOG-${Date.now()}`,
       time: 'Hace 1s',
-      type: 'Cambio ERS',
+      type: 'Creado Personaje',
       description: `Personaje exiliado definitivamente del grimorio: ${name}.`,
       user: 'Sacerdote de la Prosa',
       ipOrDetail: `ID: ${id}`
@@ -513,7 +583,7 @@ export default function App() {
     const log: SystemLog = {
       id: `LOG-${Date.now()}`,
       time: 'Hace 1s',
-      type: 'Cambio ERS',
+      type: 'Creada Historia',
       description: `Crónica quemada y exiliada del lore: "${title}".`,
       user: 'Sacerdote de la Prosa',
       ipOrDetail: `ID: ${id}`
@@ -528,7 +598,7 @@ export default function App() {
     const log: SystemLog = {
       id: `LOG-${Date.now()}`,
       time: 'Hace 1s',
-      type: 'Cambio ERS',
+      type: 'Creado Mundo',
       description: `Plano geográfico colapsado del multiverso: "${name}".`,
       user: 'Sacerdote de la Prosa',
       ipOrDetail: `ID: ${id}`
@@ -546,23 +616,50 @@ export default function App() {
     
     localStorage.setItem('is_auth_sim', 'true');
     setIsAuthenticated(true);
+
+    let updatedProfile = { ...userProfile };
+    if (loginTab === 'register') {
+      updatedProfile = {
+        name: nameInput,
+        email: emailInput || 'usuario@grimorigital.io',
+        role: registerRole,
+        avatar: registerAvatar,
+        bio: registerBio
+      };
+      setUserProfile(updatedProfile);
+    } else {
+      // Login with default settings or existing profile
+      const savedProfile = localStorage.getItem('user_profile_sim_data');
+      if (savedProfile) {
+        try {
+          updatedProfile = JSON.parse(savedProfile);
+        } catch (e) {}
+      }
+    }
     
     // Log creation
     const newLog: SystemLog = {
       id: `LOG-${Date.now()}`,
       time: 'Hace 1s',
       type: 'Inicio de Sesión',
-      description: `Ingreso autorizado de ${loginTab === 'register' ? nameInput : 'Sacerdote de la Prosa'}.`,
-      user: loginTab === 'register' ? nameInput : 'Sacerdote de la Prosa',
+      description: `Ingreso autorizado de ${updatedProfile.name} con rango de [${updatedProfile.role === 'administrador' ? 'Administrador' : 'Usuario Común'}].`,
+      user: updatedProfile.name,
       ipOrDetail: 'Auth simulada exitosa'
     };
     setLogs(prev => [newLog, ...prev]);
 
     triggerToast(
       'Abriendo Grimorio Digital',
-      `Bienvenido de vuelta, ${loginTab === 'register' ? nameInput : 'Sacerdote de la Prosa'}.`,
+      `Bienvenido de vuelta, ${updatedProfile.name}.`,
       'gold'
     );
+
+    // Initial view selection
+    if (updatedProfile.role === 'usuario comun') {
+      setActiveTab('stories');
+    } else {
+      setActiveTab('dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -873,22 +970,85 @@ export default function App() {
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 
                 {loginTab === 'register' && (
-                  <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
-                      Nombre del Forjador *
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-                      <input
-                        type="text"
-                        placeholder="ej. Valentina de Astora"
-                        value={nameInput}
-                        onChange={(e) => setNameInput(e.target.value)}
-                        className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 pl-10 text-sm text-slate-200 focus:outline-none focus:border-gold-antique/50 focus:ring-1 focus:ring-gold-antique/30 transition-colors"
-                        required
+                  <>
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                        Nombre del Forjador *
+                      </label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                        <input
+                          type="text"
+                          id="register-name-input"
+                          placeholder="ej. Valentina de Astora"
+                          value={nameInput}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 pl-10 text-sm text-slate-200 focus:outline-none focus:border-gold-antique/50 focus:ring-1 focus:ring-gold-antique/30 transition-colors"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                        Rol / Permisos del Forjador *
+                      </label>
+                      <select
+                        id="register-role-select"
+                        value={registerRole}
+                        onChange={(e) => setRegisterRole(e.target.value as any)}
+                        className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-sm text-slate-350 focus:outline-none focus:border-gold-antique/50 cursor-pointer font-sans"
+                      >
+                        <option value="administrador">Administrador (Tiene Control de Mando)</option>
+                        <option value="usuario comun">Usuario Común (Acceso estándar)</option>
+                      </select>
+                    </div>
+
+                    {/* Avatar Preset selection */}
+                    <div className="space-y-2 border-t border-slate-900 pt-3 mt-3">
+                      <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                        Creación de Perfil: Selecciona un Retrato *
+                      </span>
+                      <div className="flex gap-2 flex-wrap max-h-24 overflow-y-auto p-1 bg-slate-900/45 rounded border border-slate-800">
+                        {[
+                          { name: 'Paladín Luz', url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop' },
+                          { name: 'Maga Rúnica', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=150&auto=format&fit=crop' },
+                          { name: 'Guerrero', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150&auto=format&fit=crop' },
+                          { name: 'Inquisidora', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop' },
+                          { name: 'Nómada Caos', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop' }
+                        ].map(preset => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => setRegisterAvatar(preset.url)}
+                            className={`p-1 rounded bg-slate-950 text-xxs border flex items-center gap-1.5 transition-all text-left cursor-pointer ${
+                              registerAvatar === preset.url ? 'border-gold-antique text-gold-bright bg-gold-antique/10' : 'border-slate-850 text-slate-500 hover:border-slate-700'
+                            }`}
+                          >
+                            <img
+                              src={preset.url}
+                              alt={preset.name}
+                              className="w-4 h-4 rounded-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span>{preset.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                        Creación de Perfil: Biografía del Cronista *
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={registerBio}
+                        onChange={(e) => setRegisterBio(e.target.value)}
+                        placeholder="ej. Cronista del fénix oscuro..."
+                        className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 font-sans resize-none"
                       />
                     </div>
-                  </div>
+                  </>
                 )}
 
                 <div>
@@ -1044,20 +1204,22 @@ export default function App() {
                   </span>
                   
                   <div className="space-y-1">
-                    <button
-                      onClick={() => setActiveTab('dashboard')}
-                      className={`w-full text-left py-1.5 px-3 rounded text-xs font-mono tracking-wider uppercase transition-all flex items-center justify-between group cursor-pointer ${
-                        activeTab === 'dashboard'
-                          ? 'bg-gold-antique/10 text-gold-bright border-l-2 border-gold-antique font-semibold'
-                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Activity className={`w-3.5 h-3.5 ${activeTab === 'dashboard' ? 'text-gold-bright' : 'text-slate-500 group-hover:text-slate-300'}`} />
-                        <span>Control de Mando</span>
-                      </div>
-                      <ChevronRight className="w-2.5 h-2.5 text-slate-600 opacity-60" />
-                    </button>
+                    {userProfile.role === 'administrador' && (
+                      <button
+                        onClick={() => setActiveTab('dashboard')}
+                        className={`w-full text-left py-1.5 px-3 rounded text-xs font-mono tracking-wider uppercase transition-all flex items-center justify-between group cursor-pointer ${
+                          activeTab === 'dashboard'
+                            ? 'bg-gold-antique/10 text-gold-bright border-l-2 border-gold-antique font-semibold'
+                            : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Activity className={`w-3.5 h-3.5 ${activeTab === 'dashboard' ? 'text-gold-bright' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                          <span>Control de Mando</span>
+                        </div>
+                        <ChevronRight className="w-2.5 h-2.5 text-slate-600 opacity-60" />
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setActiveTab('forge')}
@@ -1109,6 +1271,23 @@ export default function App() {
                         {worlds.length}
                       </span>
                     </button>
+
+
+
+                    <button
+                      onClick={() => setActiveTab('profile')}
+                      className={`w-full text-left py-1.5 px-3 rounded text-xs font-mono tracking-wider uppercase transition-all flex items-center justify-between group cursor-pointer ${
+                        activeTab === 'profile'
+                          ? 'bg-gold-antique/10 text-gold-bright border-l-2 border-gold-antique font-semibold'
+                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <User className={`w-3.5 h-3.5 ${activeTab === 'profile' ? 'text-gold-bright' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                        <span>Mi Perfil</span>
+                      </div>
+                      <ChevronRight className="w-2.5 h-2.5 text-slate-600 opacity-60" />
+                    </button>
                   </div>
                 </div>
               </nav>
@@ -1119,25 +1298,30 @@ export default function App() {
               
               {/* Level indicator / RANK box */}
               <div className="mb-4 bg-slate-900/60 p-3 rounded-lg border border-gold-antique/10 text-left">
-                <div className="flex items-center gap-2 mb-1.5Packed">
-                  <div className="w-7 h-7 rounded bg-gold-antique/15 border border-gold-antique/30 flex items-center justify-center text-gold-bright">
-                    <Award className="w-4 h-4" />
-                  </div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <img
+                    src={userProfile.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop"}
+                    alt="Avatar"
+                    className="w-8 h-8 rounded-full border border-gold-antique/40 object-cover"
+                    referrerPolicy="no-referrer"
+                  />
                   <div>
                     <h4 className="text-xs font-mono text-slate-200 font-bold leading-none">
-                      Sacerdote de la Prosa
+                      {userProfile.name}
                     </h4>
-                    <span className="text-[10px] text-slate-400">Nivel 14 • Cronista</span>
+                    <span className="text-[10px] text-slate-400 uppercase mt-0.5 block tracking-widest">
+                      {userProfile.role === 'administrador' ? 'M. Admin 👑' : 'Cronista 🖋️'}
+                    </span>
                   </div>
                 </div>
                 
                 {/* Level progress bar */}
-                <div className="w-full bg-slate-950 h-1.5 rounded-full mt-2 overflow-hidden border border-slate-800">
-                  <div className="bg-gold-antique h-full rounded-full" style={{ width: '68%' }}></div>
+                <div className="w-full bg-slate-950 h-1 rounded-full mt-2 overflow-hidden border border-slate-800">
+                  <div className="bg-gold-antique h-full rounded-full" style={{ width: userProfile.role === 'administrador' ? '100%' : '35%' }}></div>
                 </div>
-                <div className="flex justify-between text-[9px] text-slate-500 mt-1 font-mono">
-                  <span>6,800 XP</span>
-                  <span>10,000 XP (Próximo Rango)</span>
+                <div className="flex justify-between text-[8px] text-slate-500 mt-1 font-mono">
+                  <span>{userProfile.role === 'administrador' ? 'MÁXIMO' : 'Nivel 4 • Inic.'}</span>
+                  <span>{userProfile.role === 'administrador' ? 'Rango: Administrador' : '10,000 XP (Próximo Rango)'}</span>
                 </div>
               </div>
 
@@ -1181,10 +1365,10 @@ export default function App() {
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
                 <h3 className="font-serif text-lg tracking-wide uppercase text-slate-100 font-bold">
                   {activeTab === 'dashboard' && 'Control de Mando'}
-                  {activeTab === 'scrum' && 'Tablero de Tareas'}
                   {activeTab === 'forge' && 'Fichas de Personajes'}
                   {activeTab === 'stories' && 'Crónicas de Historia'}
                   {activeTab === 'worlds' && 'Cosmogonía (Mundos)'}
+                  {activeTab === 'profile' && 'Perfil de Usuario'}
                 </h3>
               </div>
 
@@ -1512,38 +1696,95 @@ export default function App() {
                 </div>
               )}
 
-              {/* ==================== TAB 2: MATRIZ DE REQUISITOS (DISABLED) ==================== */}
-              {false && (
-                <div id="view-requirements" className="space-y-6 animate-fade-in">
+              {/* ==================== TAB 2: MATRIZ DE REQUISITOS (ADMINISTRATOR-ONLY) ==================== */}
+              {activeTab === 'admin' && adminSubTab === 'requirements' && (
+                <div id="view-requirements" className="space-y-6 animate-fade-in text-left">
                   
-                  {/* Explanatory introduction to the IEEE 830 ERS concept */}
-                  <div className="bg-slate-950/50 rounded-lg border border-gold-antique/15 p-6 relative overflow-hidden">
-                    <div className="absolute top-2 right-2 text-[10px] font-mono text-gold-antique/40 uppercase tracking-widest border border-gold-antique/10 p-1 rounded">
-                      Standard IEEE 835-1998
+                  {/* Clean Admin Sub-navigation Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gold-antique/10 gap-3 text-left">
+                    <div>
+                      <span className="text-[10px] font-mono text-gold-antique uppercase tracking-widest block mb-0.5">
+                        Línea Base Tecnológica • Administrador
+                      </span>
+                      <h4 className="font-serif text-xl font-extrabold text-slate-100 uppercase tracking-widest">
+                        Administración ERS & CCB
+                      </h4>
                     </div>
-                    <h4 className="font-serif text-base text-gold-antique uppercase tracking-wider mb-2">
-                      Especificación de Requisitos de Software [ERS]
-                    </h4>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Este portal visualiza la especificación formal del sistema de simulación narrativa <strong>&ldquo;Identity Simulation&rdquo;</strong>. Facilita la trazabilidad entre el modelo de negocio narrativo y el flujo ágil de desarrollo. Todo cambio sustancial sobre los requerimientos debe validarse mediante el Comité de Control de Cambios en la pestaña homónima.
-                    </p>
 
-                    {/* Standard sections quick highlights */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-800 text-xs">
-                      <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
-                        <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">1. Introducción y Alcance</span>
-                        <p className="text-[11px] text-slate-400">Determina el objetivo del grimorio digital: permitir que escritores creen un multiverso sincronizado de personajes e historias conectadas.</p>
-                      </div>
-                      <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
-                        <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">2. Descripción General</span>
-                        <p className="text-[11px] text-slate-400">Persistencia híbrida local, motor de rol, herradura de atributos equilibrada, control exhaustivo de confidencialidad de la prosa.</p>
-                      </div>
-                      <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
-                        <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">3. Requisitos Específicos</span>
-                        <p className="text-[11px] text-slate-400">Clasificación IEEE para requerimientos funcionales (RF) de comportamiento de software y no funcionales (RNF) de tecnología.</p>
-                      </div>
+                    <div className="flex flex-wrap gap-1.5 bg-slate-900/60 p-1 rounded border border-slate-800">
+                      <button
+                        onClick={() => setAdminSubTab('requirements')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors bg-gold-antique text-slate-950 font-bold"
+                      >
+                        Matriz ERS
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('scrum')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Tablero Scrum
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('pmi')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Comité CCB
+                      </button>
                     </div>
                   </div>
+                  
+                  {/* Collapsible explanatory introduction to ERS to avoid visual overload */}
+                  {!showErsGuide ? (
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950/50 p-4 rounded-lg border border-gold-antique/10 text-xs gap-3">
+                      <p className="text-slate-300 font-sans font-light">
+                        Visualiza la especificación formal del sistema de simulación narrativa <strong>&ldquo;Identity Simulation&rdquo;</strong>.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowErsGuide(true)}
+                        className="px-3 py-1 bg-slate-900 hover:bg-slate-850 text-gold-bright border border-gold-antique/15 rounded font-mono text-[10px] uppercase tracking-wider cursor-pointer whitespace-nowrap"
+                      >
+                        Mostrar Guía ERS ▾
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/50 rounded-lg border border-gold-antique/15 p-5 relative overflow-hidden animate-fade-in">
+                      <div className="absolute top-2 right-2 text-[10px] font-mono text-gold-antique/40 uppercase tracking-widest border border-gold-antique/10 p-1 rounded">
+                        Standard IEEE 835-1998
+                      </div>
+                      <div className="flex justify-between items-start mb-2 pr-20">
+                        <h4 className="font-serif text-base text-gold-antique uppercase tracking-wider">
+                          Especificación de Requisitos de Software [ERS]
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowErsGuide(false)}
+                          className="px-2.5 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded font-mono text-[9px] uppercase tracking-wider cursor-pointer"
+                        >
+                          Ocultar ▲
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed font-light">
+                        Este portal visualiza la especificación formal del sistema de simulación narrativa <strong>&ldquo;Identity Simulation&rdquo;</strong>. Facilita la trazabilidad entre el modelo de negocio narrativo y el flujo ágil de desarrollo. Todo cambio sustancial sobre los requerimientos debe validarse mediante el Comité de Control de Cambios en la pestaña homónima.
+                      </p>
+
+                      {/* Standard sections quick highlights */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-800 text-xs">
+                        <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
+                          <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">1. Introducción y Alcance</span>
+                          <p className="text-[11px] text-slate-400">Determina el objetivo del grimorio digital: permitir que escritores creen un multiverso sincronizado de personajes e historias conectadas.</p>
+                        </div>
+                        <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
+                          <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">2. Descripción General</span>
+                          <p className="text-[11px] text-slate-400">Persistencia híbrida local, motor de rol, herradura de atributos equilibrada, control exhaustivo de confidencialidad de la prosa.</p>
+                        </div>
+                        <div className="bg-slate-900/40 p-3 rounded border border-slate-800">
+                          <span className="font-mono text-gold-bright text-xxs uppercase tracking-wider block mb-1">3. Requisitos Específicos</span>
+                          <p className="text-[11px] text-slate-400">Clasificación IEEE para requerimientos funcionales (RF) de comportamiento de software y no funcionales (RNF) de tecnología.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Requirements Matrix Filter Bar */}
                   <div className="bg-slate-950/40 p-4 rounded-lg border border-gold-antique/10 text-left">
@@ -1707,9 +1948,42 @@ export default function App() {
                 </div>
               )}
 
-              {/* ==================== TAB 3: TABLERO SCRUM KANBAN (AGILE PLANNER) ==================== */}
-              {false && (
+              {/* ==================== TAB 3: TABLERO SCRUM KANBAN (ADMINISTRATOR-ONLY) ==================== */}
+              {activeTab === 'admin' && adminSubTab === 'scrum' && (
                 <div id="view-scrum" className="space-y-6 animate-fade-in text-left">
+                  
+                  {/* Clean Admin Sub-navigation Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gold-antique/10 gap-3 text-left">
+                    <div>
+                      <span className="text-[10px] font-mono text-gold-antique uppercase tracking-widest block mb-0.5">
+                        Flujos del Sprint de Prosa • Administrador
+                      </span>
+                      <h4 className="font-serif text-xl font-extrabold text-slate-100 uppercase tracking-widest">
+                        Administración ERS & CCB
+                      </h4>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 bg-slate-900/60 p-1 rounded border border-slate-800">
+                      <button
+                        onClick={() => setAdminSubTab('requirements')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Matriz ERS
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('scrum')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors bg-gold-antique text-slate-950 font-bold"
+                      >
+                        Tablero Scrum
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('pmi')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Comité CCB
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Kanban Header Section */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-950/40 p-4 rounded-lg border border-gold-antique/10">
@@ -1956,24 +2230,81 @@ export default function App() {
                 </div>
               )}
 
-              {/* ==================== TAB 4: PMI CHANGE CONTROL SIMULATOR (DISABLED) ==================== */}
-              {false && (
+              {/* ==================== TAB 4: PMI CHANGE CONTROL SIMULATOR (ADMINISTRATOR-ONLY) ==================== */}
+              {activeTab === 'admin' && adminSubTab === 'pmi' && (
                 <div id="view-pmi" className="space-y-6 animate-fade-in text-left">
                   
-                  {/* PMI Compliance Header */}
-                  <div className="bg-slate-950/50 rounded-lg p-6 border border-gold-antique/15 text-left">
-                    <h4 className="font-serif text-base text-gold-antique uppercase tracking-wider mb-2">
-                      Comité de Control de Cambios [PMI CCB]
-                    </h4>
-                    <p className="text-xs text-slate-300 leading-relaxed mb-4 font-light">
-                      En cumplimiento con los estándares del <strong>Project Management Institute (PMI)</strong>, toda propuesta evolutiva que impacte la línea base de los Requisitos (ERS) debe ingresarse formalmente mediante una <strong>Solicitud de Cambio (Request for Change - RFC)</strong>. El Comité evaluará la justificación técnica, nivel de impacto estructural y recursos temporales para emitir un veredicto de Aprobación o Rechazo.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-400">
-                      <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">PMBOK Guide v7 compliant</span>
-                      <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">Línea Base Protegida</span>
-                      <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">ISO 9001:2015 Asegurado</span>
+                  {/* Clean Admin Sub-navigation Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gold-antique/10 gap-3 text-left">
+                    <div>
+                      <span className="text-[10px] font-mono text-gold-antique uppercase tracking-widest block mb-0.5">
+                        Comité de Control de Cambios CCB • Administrador
+                      </span>
+                      <h4 className="font-serif text-xl font-extrabold text-slate-100 uppercase tracking-widest">
+                        Administración ERS & CCB
+                      </h4>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 bg-slate-900/60 p-1 rounded border border-slate-800">
+                      <button
+                        onClick={() => setAdminSubTab('requirements')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Matriz ERS
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('scrum')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors text-slate-400 hover:text-slate-200"
+                      >
+                        Tablero Scrum
+                      </button>
+                      <button
+                        onClick={() => setAdminSubTab('pmi')}
+                        className="px-3 py-1 text-xxs font-mono uppercase tracking-wider rounded transition-colors bg-gold-antique text-slate-950 font-bold"
+                      >
+                        Comité CCB
+                      </button>
                     </div>
                   </div>
+                  
+                  {/* Collapsible PMI compliance guide to avoid visual overload */}
+                  {!showPmiGuide ? (
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950/50 p-4 rounded-lg border border-gold-antique/10 text-xs gap-3">
+                      <p className="text-slate-300 font-sans font-light">
+                        Toda propuesta evolutiva que afecte el sistema debe ingresar mediante una <strong>Solicitud de Cambio (RFC)</strong>.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPmiGuide(true)}
+                        className="px-3 py-1 bg-slate-900 hover:bg-slate-850 text-gold-bright border border-gold-antique/15 rounded font-mono text-[10px] uppercase tracking-wider cursor-pointer whitespace-nowrap"
+                      >
+                        Mostrar Guía CCB ▾
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/50 rounded-lg p-5 border border-gold-antique/15 text-left animate-fade-in relative">
+                      <div className="flex justify-between items-start mb-2 pr-20">
+                        <h4 className="font-serif text-base text-gold-antique uppercase tracking-wider">
+                          Comité de Control de Cambios [PMI CCB]
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowPmiGuide(false)}
+                          className="px-2.5 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded font-mono text-[9px] uppercase tracking-wider cursor-pointer"
+                        >
+                          Ocultar ▲
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed mb-4 font-light">
+                        En cumplimiento con los estándares del <strong>Project Management Institute (PMI)</strong>, toda propuesta evolutiva que impacte la línea base de los Requisitos (ERS) debe ingresarse formalmente mediante una <strong>Solicitud de Cambio (Request for Change - RFC)</strong>. El Comité evaluará la justificación técnica, nivel de impacto estructural y recursos temporales para emitir un veredicto de Aprobación o Rechazo.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-500">
+                        <span className="bg-slate-900 border border-slate-800/60 px-2 py-0.5 rounded">PMBOK Guide v7 compliant</span>
+                        <span className="bg-slate-900 border border-slate-800/60 px-2 py-0.5 rounded">Línea Base Protegida</span>
+                        <span className="bg-slate-900 border border-slate-800/60 px-2 py-0.5 rounded">ISO 9001:2015 Asegurado</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* RFC Entry and Simulator Lists Layout */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -2809,12 +3140,16 @@ export default function App() {
                           </h4>
                         </div>
                         <p className="text-xs text-slate-300 leading-relaxed font-light mb-4 text-left font-sans">
-                          Cada crónica entrelaza personajes (Fichas) y mundos (Cosmogonías). El motor de Identity Simulation indexará estos eventos para asegurar coherencia absoluta con los requerimientos de desarrollo ágil.
+                          Cada crónica entrelaza personajes (Fichas) y mundos (Cosmogonías). El motor de Identity Simulation indexará estos eventos para asegurar coherencia absoluta.
                         </p>
 
-                        <div className="space-y-2 font-mono text-xxs text-slate-500 text-left">
-                          <div>✓ RF08 - Gestión de Crónicas</div>
-                          <div>✓ RF15 - Trazabilidad de Activos vinculados</div>
+                        <div className="space-y-2 text-xxs text-slate-400 font-sans border-t border-slate-900 pt-3 mt-3">
+                          <p className="font-semibold text-gold-antique uppercase font-mono tracking-wider mb-1">Directrices de Autoría:</p>
+                          <ul className="list-disc pl-3 space-y-1.5 leading-relaxed">
+                            <li>Define un título épico que describa el deceso rúnico o evento histórico fundamental.</li>
+                            <li>Vincule un personaje forjado para tejer herencias narrativas coherentes.</li>
+                            <li>Sitúe la historia en una de las cosmogonías activas para trazar su plano multiversal.</li>
+                          </ul>
                         </div>
                       </div>
 
@@ -2827,19 +3162,31 @@ export default function App() {
 
                     {/* REDACT FORM */}
                     <div className="lg:col-span-8 bg-slate-950/60 rounded-lg border border-gold-antique/10 p-6 text-left">
-                      <form onSubmit={handleSaveStory} className="space-y-4 text-left">
+                      <form onSubmit={handleSaveStory} className="space-y-4 text-left" noValidate>
                         <div>
                           <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">
                             Título de la Crónica *
                           </label>
                           <input
                             type="text"
-                            required
                             value={storyTitle}
-                            onChange={(e) => setStoryTitle(e.target.value)}
+                            onChange={(e) => {
+                              setStoryTitle(e.target.value);
+                              if (e.target.value.trim().length >= 5) {
+                                setStoryTitleError('');
+                              }
+                            }}
                             placeholder="e.g. La caída rúnica de Ethendor"
-                            className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 font-sans"
+                            className={`w-full bg-slate-900 border rounded px-3 py-2 text-xs text-slate-200 focus:outline-none transition-colors font-sans ${
+                              storyTitleError ? 'border-rose-500 focus:border-rose-500' : 'border-gold-antique/10 focus:border-gold-antique/50'
+                            }`}
                           />
+                          {storyTitleError && (
+                            <p className="mt-1 text-xs text-rose-400 font-mono flex items-center gap-1 animate-fade-in" id="error-story-title">
+                              <span className="w-1 h-1 rounded-full bg-rose-500"></span>
+                              {storyTitleError}
+                            </p>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
@@ -2882,12 +3229,24 @@ export default function App() {
                           </label>
                           <textarea
                             rows={5}
-                            required
                             value={storyContent}
-                            onChange={(e) => setStoryContent(e.target.value)}
+                            onChange={(e) => {
+                              setStoryContent(e.target.value);
+                              if (e.target.value.trim().length >= 20) {
+                                setStoryContentError('');
+                              }
+                            }}
                             placeholder="Escribe tu manuscrito literario aquí..."
-                            className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 leading-relaxed resize-none font-serif text-left"
+                            className={`w-full bg-slate-900 border rounded px-3 py-2 text-xs text-slate-200 focus:outline-none leading-relaxed resize-none font-serif text-left transition-colors ${
+                              storyContentError ? 'border-rose-500 focus:border-rose-500' : 'border-gold-antique/10 focus:border-gold-antique/50'
+                            }`}
                           ></textarea>
+                          {storyContentError && (
+                            <p className="mt-1 text-xs text-rose-400 font-mono flex items-center gap-1 animate-fade-in" id="error-story-content">
+                              <span className="w-1 h-1 rounded-full bg-rose-500"></span>
+                              {storyContentError}
+                            </p>
+                          )}
                         </div>
 
                         <div className="text-left">
@@ -3200,6 +3559,225 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ==================== TAB 8: PERFIL DE USUARIO ==================== */}
+            {activeTab === 'profile' && (
+              <div id="view-profile" className="space-y-6 animate-fade-in text-left">
+                
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gold-antique/10 gap-3 text-left">
+                  <div>
+                    <span className="text-[10px] font-mono text-gold-antique uppercase tracking-widest block mb-0.5">
+                      Configuración de la Identidad • Identity Simulation
+                    </span>
+                    <h4 className="font-serif text-xl font-extrabold text-slate-100 uppercase tracking-widest">
+                      Perfil del Forjador
+                    </h4>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                  
+                  {/* LEFT COLUMN: VISUAL PROFILE CARD PREVIEW */}
+                  <div className="lg:col-span-4 bg-slate-955 border border-gold-antique/15 rounded-lg p-5 flex flex-col justify-between text-left relative overflow-hidden">
+                    {/* Background glow depends on visual preset */}
+                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-gold-antique via-gold-bright to-purple-600"></div>
+
+                    <div className="space-y-6 pt-2">
+                      <div className="text-center">
+                        <div className="relative inline-block">
+                          <img
+                            src={userProfile.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop"}
+                            alt="Avatar Preview"
+                            className="w-24 h-24 rounded-full border-2 border-gold-antique/60 object-cover mx-auto shadow-lg shadow-black/50"
+                            referrerPolicy="no-referrer"
+                          />
+                          <span className={`absolute bottom-1 right-2 w-4 h-4 rounded-full border-2 border-slate-950 flex items-center justify-center ${
+                            userProfile.role === 'administrador' ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`} title={userProfile.role === 'administrador' ? 'Administrador' : 'Usuario Común'}>
+                            <span className="text-[7px] text-slate-950 font-bold">★</span>
+                          </span>
+                        </div>
+
+                        <h4 className="font-serif text-lg font-bold text-slate-100 mt-3 break-words">
+                          {userProfile.name || 'Identidad Vacía'}
+                        </h4>
+                        <span className="text-[9px] font-mono text-gold-antique uppercase tracking-widest bg-gold-antique/5 border border-gold-antique/10 px-2.5 py-1 rounded inline-block mt-1">
+                          {userProfile.role === 'administrador' ? 'M. Administrador 👑' : 'Cronista Estándar 🖋️'}
+                        </span>
+                      </div>
+
+                      <div className="border-t border-slate-900 pt-4 space-y-3">
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Estilo Biográfico:</span>
+                          <p className="text-xs text-slate-300 leading-relaxed italic break-words whitespace-pre-wrap">
+                            &ldquo;{userProfile.bio || 'Sin biografía escrita en el grimorio todavía. Modela tu personalidad en el panel derecho.'}&rdquo;
+                          </p>
+                        </div>
+
+                        {/* Creative Stats Panel */}
+                        <div className="border-t border-slate-900 pt-4 space-y-2 font-mono text-[10px]">
+                          <span className="text-[9px] text-slate-500 uppercase tracking-wider block">Registros del Grimorio:</span>
+                          <div className="flex justify-between py-1 border-b border-slate-900/40">
+                            <span className="text-slate-400">Personajes Forjados:</span>
+                            <span className="text-gold-antique font-bold">{characters.length}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-slate-900/40">
+                            <span className="text-slate-400">Crónicas Escritas:</span>
+                            <span className="text-blue-400 font-bold">{stories.length}</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-400">Planos de Cosmogonía:</span>
+                            <span className="text-emerald-400 font-bold">{worlds.length}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-900/80 border border-slate-800 rounded text-center mt-6">
+                      <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Rango Autorizado</span>
+                      <span className="text-xs font-semibold text-slate-200">
+                        {userProfile.role === 'administrador' ? 'Acceso Total al Sistema' : 'Escritura & Forja Estándar'}
+                      </span>
+                    </div>
+
+                  </div>
+
+                  {/* RIGHT COLUMN: CONFIGURATION FORM */}
+                  <div className="lg:col-span-8 bg-slate-955/40 border border-gold-antique/10 rounded-lg p-6 text-left">
+                    <h4 className="font-serif text-sm font-semibold text-slate-100 uppercase tracking-wider mb-4 pb-2 border-b border-slate-900">
+                      Alterar Atributos de Identidad
+                    </h4>
+
+                    {/* Pre-filled fields form */}
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                            Nombre del Forjador (Identidad) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={userProfile.name}
+                            onChange={(e) => setUserProfile(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="ej. Valentina de Astora"
+                            className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 font-sans"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                            Avatar del Grimorio (URL de la Imagen)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={userProfile.avatar}
+                              onChange={(e) => setUserProfile(prev => ({ ...prev, avatar: e.target.value }))}
+                              placeholder="Fija un enlace web, o selecciona un preset..."
+                              className="flex-1 bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 font-sans"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Avatar presets selectors */}
+                      <div>
+                        <span className="block text-xxs font-mono uppercase tracking-wider text-slate-500 mb-2">
+                          Colección de Presets Ilustrativos:
+                        </span>
+                        <div className="flex gap-3 flex-wrap">
+                          {[
+                            { name: 'Paladín Luz', url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop' },
+                            { name: 'Maga Rúnica', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=150&auto=format&fit=crop' },
+                            { name: 'Guerrero', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150&auto=format&fit=crop' },
+                            { name: 'Inquisidora', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop' },
+                            { name: 'Nómada Caos', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop' }
+                          ].map(preset => (
+                            <button
+                              key={preset.name}
+                              type="button"
+                              onClick={() => {
+                                setUserProfile(prev => ({ ...prev, avatar: preset.url }));
+                                triggerToast('Preset Seleccionado', `Retrato de ${preset.name} cargado en el simulador.`, 'info');
+                              }}
+                              className={`p-1.5 rounded bg-slate-900 text-xxs border flex items-center gap-2 cursor-pointer transition-colors ${
+                                userProfile.avatar === preset.url ? 'border-gold-antique text-gold-bright bg-gold-antique/5' : 'border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                              }`}
+                            >
+                              <img
+                                src={preset.url}
+                                alt={preset.name}
+                                className="w-5 h-5 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <span>{preset.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                          Rol / Rango de Permisos (Inmutable)
+                        </label>
+                        <select
+                          disabled
+                          value={userProfile.role}
+                          className="w-full bg-slate-900/60 border border-gold-antique/5 rounded px-3 py-2 text-xs text-slate-500 cursor-not-allowed font-sans"
+                        >
+                          <option value="administrador">Administrador (Control de Mando y Administración ERS habilitados)</option>
+                          <option value="usuario comun">Usuario Común (Módulos estándar habilitados)</option>
+                        </select>
+                        <p className="mt-1 text-[10px] text-slate-500 font-mono">
+                          * Por razones de integridad de desarrollo y estándares de simulación, el rol no puede cambiarse una vez forjado. Considere crear una nueva cuenta si requiere otros permisos.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                          Enfoque Narrativo / Biografía del Autor *
+                        </label>
+                        <textarea
+                          rows={4}
+                          required
+                          value={userProfile.bio}
+                          onChange={(e) => setUserProfile(prev => ({ ...prev, bio: e.target.value }))}
+                          placeholder="Describe tu inclinación literaria, razas predilectas o motivaciones para simular identidades..."
+                          className="w-full bg-slate-900 border border-gold-antique/10 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-gold-antique/50 leading-relaxed font-sans resize-none"
+                        ></textarea>
+                      </div>
+
+                      <div className="flex justify-end pt-3 border-t border-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Save profile handler with custom audit log tracking name change
+                            const newLog: SystemLog = {
+                              id: `LOG-${Date.now()}`,
+                              time: 'Hace 1s',
+                              type: 'Cambio Permisos',
+                              description: `Se reconfiguraron los atributos del cronista [${userProfile.name}].`,
+                              user: userProfile.name,
+                              ipOrDetail: 'UI Profile Sync'
+                            };
+                            setLogs(prev => [newLog, ...prev]);
+                            triggerToast('Identidad Consolidada', 'Tus cambios de perfil se han sincronizado con las runas del sistema.', 'gold');
+                          }}
+                          className="bg-gold-antique hover:bg-gold-bright text-slate-950 font-serif font-black uppercase text-xs px-6 py-2.5 rounded transition-all cursor-pointer shadow-lg shadow-gold-antique/10 flex items-center gap-2"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                          <span>Guardar Atributos de Perfil</span>
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+
+                </div>
+
               </div>
             )}
 
